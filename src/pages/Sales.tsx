@@ -260,7 +260,7 @@ const Sales = () => {
     }
 
     try {
-      // Calculate total without any tax
+      // Calculate total without tax
       const totalAmount = cart.reduce((sum, item) => {
         const finalPrice = item.adjustedPrice || item.price;
         return sum + (finalPrice * item.quantity);
@@ -272,12 +272,10 @@ const Sales = () => {
         items: cart.map(item => ({
           productId: item.productId,
           quantity: item.quantity,
-          unitPrice: item.adjustedPrice || item.price,
+          unitPrice: item.adjustedPrice || item.price, // Use adjusted price if available
           totalPrice: (item.adjustedPrice || item.price) * item.quantity
         })),
-        totalAmount: totalAmount, // Pure total without tax
-        subtotal: totalAmount, // Same as total since no tax
-        tax: 0, // Explicitly set tax to 0
+        totalAmount: totalAmount, // No tax added
         discount: 0,
         paymentMethod: paymentMethod,
         status: orderStatus,
@@ -644,3 +642,5 @@ const Sales = () => {
 };
 
 export default Sales;
+
+}

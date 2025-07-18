@@ -16,14 +16,13 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Package, Search, Plus, Edit, Trash2, AlertTriangle, RefreshCw, Download, FileText } from "lucide-react";
+import { Package, Search, Plus, Edit, Trash2, AlertTriangle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { productsApi, categoriesApi, unitsApi } from "@/services/api";
 import { ProductDetailsModal } from "@/components/sales/ProductDetailsModal";
 import { FilteredProductsModal } from "@/components/FilteredProductsModal";
 import { Eye } from "lucide-react";
 import { generateSKU } from "@/utils/skuGenerator";
-import jsPDF from 'jspdf';
 
 const Products = () => {
   const { toast } = useToast();
@@ -32,13 +31,14 @@ const Products = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+  const [isUnitDialogOpen, setIsUnitDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [exportLoading, setExportLoading] = useState(false);
   const [newCategory, setNewCategory] = useState("");
+  const [newUnit, setNewUnit] = useState({ name: "", label: "" });
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -164,212 +164,6 @@ const Products = () => {
     }
   };
 
-  const handleStockExport = async () => {
-    try {
-      setExportLoading(true);
-      
-      // Fetch all products for export (without pagination)
-      const response = await productsApi.getAll({ 
-        limit: 10000, // Large number to get all products
-        status: 'active' 
-      });
-      
-      if (response.success) {
-        const allProducts = response.data.products || response.data || [];
-        const exportData = allProducts.map((product: any) => ({
-          'Product ID': product.id,
-          'Product Name': product.name,
-          'SKU': product.sku,
-          'Category': product.category,
-          'Current Stock': product.stock,
-          'Unit': product.unit,
-          'Price (PKR)': product.price,
-          'Cost Price (PKR)': product.costPrice || 0,
-          'Stock Value (PKR)': (product.stock * (product.costPrice || product.price)),
-          'Min Stock': product.minStock,
-          'Max Stock': product.maxStock || 'N/A',
-          'Description': product.description || 'N/A',
-          'Stock Status': product.stock <= product.minStock ? 'Low Stock' : 'In Stock',
-          'Last Updated': product.updatedAt || 'N/A',
-          'Created Date': product.createdAt || 'N/A'
-        }));
-
-        // Calculate total stock value
-        const totalStockValue = allProducts.reduce((total: number, product: any) => {
-          return total + (product.stock * (product.costPrice || product.price));
-        }, 0);
-
-        // Add summary row
-        exportData.unshift({
-          'Product ID': 'SUMMARY',
-          'Product Name': `Total Products: ${allProducts.length}`,
-          'SKU': `Export Date: ${new Date().toLocaleString()}`,
-          'Category': `Total Stock Value: PKR ${totalStockValue.toLocaleString()}`,
-          'Current Stock': '',
-          'Unit': '',
-          'Price (PKR)': '',
-          'Cost Price (PKR)': '',
-          'Stock Value (PKR)': '',
-          'Min Stock': '',
-          'Max Stock': '',
-          'Description': '',
-          'Stock Status': '',
-          'Last Updated': '',
-          'Created Date': ''
-        });
-
-        // Convert to CSV
-        const headers = Object.keys(exportData[1] || {});
-        const csvContent = [
-          headers.join(','),
-          ...exportData.map(row => 
-            headers.map(header => {
-              const value = row[header as keyof typeof row];
-              return typeof value === 'string' && value.includes(',') 
-                ? `"${value}"` 
-                : value;
-            }).join(',')
-          )
-        ].join('\n');
-
-        // Download CSV
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `stock_export_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        toast({
-          title: "Export Successful",
-          description: `Exported ${allProducts.length} products with complete stock details.`,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to export stock:', error);
-      toast({
-        title: "Export Failed",
-        description: "Failed to export stock data. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const handleStockExportPDF = async () => {
-    try {
-      setExportLoading(true);
-      
-      // Fetch all products for export (without pagination)
-      const response = await productsApi.getAll({ 
-        limit: 10000, // Large number to get all products
-        status: 'active' 
-      });
-      
-      if (response.success) {
-        const allProducts = response.data.products || response.data || [];
-        
-        // Create PDF
-        const pdf = new jsPDF();
-        const pageWidth = pdf.internal.pageSize.width;
-        const pageHeight = pdf.internal.pageSize.height;
-        const margin = 20;
-        let yPos = margin;
-
-        // Title
-        pdf.setFontSize(20);
-        pdf.setFont('helvetica', 'bold');
-        pdf.text('Stock Export Report', pageWidth / 2, yPos, { align: 'center' });
-        yPos += 15;
-
-        // Export info
-        pdf.setFontSize(10);
-        pdf.setFont('helvetica', 'normal');
-        pdf.text(`Export Date: ${new Date().toLocaleString()}`, margin, yPos);
-        yPos += 8;
-        pdf.text(`Total Products: ${allProducts.length}`, margin, yPos);
-        yPos += 8;
-
-        // Calculate total stock value
-        const totalStockValue = allProducts.reduce((total: number, product: any) => {
-          return total + (product.stock * (product.costPrice || product.price));
-        }, 0);
-        pdf.text(`Total Stock Value: PKR ${totalStockValue.toLocaleString()}`, margin, yPos);
-        yPos += 15;
-
-        // Table headers
-        pdf.setFontSize(8);
-        pdf.setFont('helvetica', 'bold');
-        const headers = ['Product Name', 'SKU', 'Category', 'Stock', 'Unit', 'Price', 'Value'];
-        const colWidths = [50, 30, 25, 20, 15, 25, 25];
-        let xPos = margin;
-
-        headers.forEach((header, index) => {
-          pdf.text(header, xPos, yPos);
-          xPos += colWidths[index];
-        });
-        yPos += 8;
-
-        // Draw line under headers
-        pdf.line(margin, yPos - 2, pageWidth - margin, yPos - 2);
-        yPos += 3;
-
-        // Table data
-        pdf.setFont('helvetica', 'normal');
-        allProducts.forEach((product: any) => {
-          // Check if we need a new page
-          if (yPos > pageHeight - 30) {
-            pdf.addPage();
-            yPos = margin;
-          }
-
-          xPos = margin;
-          const rowData = [
-            product.name.substring(0, 20) + (product.name.length > 20 ? '...' : ''),
-            product.sku,
-            product.category.substring(0, 12) + (product.category.length > 12 ? '...' : ''),
-            product.stock.toString(),
-            product.unit,
-            product.price.toLocaleString(),
-            (product.stock * (product.costPrice || product.price)).toLocaleString()
-          ];
-
-          rowData.forEach((data, index) => {
-            pdf.text(data, xPos, yPos);
-            xPos += colWidths[index];
-          });
-          yPos += 6;
-        });
-
-        // Footer
-        yPos = pageHeight - 20;
-        pdf.setFontSize(8);
-        pdf.text(`Generated by Inventory Management System`, pageWidth / 2, yPos, { align: 'center' });
-
-        // Save PDF
-        pdf.save(`stock_export_${new Date().toISOString().split('T')[0]}.pdf`);
-
-        toast({
-          title: "PDF Export Successful",
-          description: `Exported ${allProducts.length} products to PDF with complete stock details.`,
-        });
-      }
-    } catch (error) {
-      console.error('Failed to export stock to PDF:', error);
-      toast({
-        title: "PDF Export Failed",
-        description: "Failed to export stock data to PDF. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= pagination.totalPages) {
       fetchProducts(page);
@@ -460,6 +254,30 @@ const Products = () => {
       toast({
         title: "Error",
         description: "Failed to add category",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleAddUnit = async () => {
+    if (!newUnit.name.trim() || !newUnit.label.trim()) return;
+    
+    try {
+      const response = await unitsApi.create(newUnit);
+      if (response.success) {
+        setNewUnit({ name: "", label: "" });
+        setIsUnitDialogOpen(false);
+        fetchUnits();
+        toast({
+          title: "Unit Added",
+          description: "New unit has been added successfully.",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to add unit:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add unit",
         variant: "destructive"
       });
     }
@@ -615,33 +433,43 @@ const Products = () => {
             </DialogContent>
           </Dialog>
 
-          <Button 
-            variant="outline" 
-            onClick={handleStockExport}
-            disabled={exportLoading}
-            className="bg-green-600 hover:bg-green-700 text-white border-green-600"
-          >
-            {exportLoading ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-2" />
-            )}
-            {exportLoading ? 'Exporting...' : 'CSV Export'}
-          </Button>
-
-          <Button 
-            variant="outline" 
-            onClick={handleStockExportPDF}
-            disabled={exportLoading}
-            className="bg-red-600 hover:bg-red-700 text-white border-red-600"
-          >
-            {exportLoading ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4 mr-2" />
-            )}
-            {exportLoading ? 'Exporting...' : 'PDF Export'}
-          </Button>
+          <Dialog open={isUnitDialogOpen} onOpenChange={setIsUnitDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Unit
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Unit</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="unitName">Unit Name</Label>
+                  <Input
+                    id="unitName"
+                    value={newUnit.name}
+                    onChange={(e) => setNewUnit({...newUnit, name: e.target.value})}
+                    placeholder="e.g., kg, pieces"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="unitLabel">Unit Label</Label>
+                  <Input
+                    id="unitLabel"
+                    value={newUnit.label}
+                    onChange={(e) => setNewUnit({...newUnit, label: e.target.value})}
+                    placeholder="e.g., Kilograms, Pieces"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button onClick={handleAddUnit} className="flex-1">Add Unit</Button>
+                  <Button variant="outline" onClick={() => setIsUnitDialogOpen(false)}>Cancel</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
